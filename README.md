@@ -76,6 +76,16 @@ It speaks the **Model Context Protocol (MCP)**, an open standard from Anthropic,
 
 ## Installation
 
+**Just want to install and use it?** Clone directly from this repo:
+
+```bash
+git clone https://github.com/devarayasaidakshesh/salesforce-mcp.git
+cd salesforce-mcp
+npm install
+```
+
+**Want to fork and host your own copy?** Fork it on GitHub first, then:
+
 ```bash
 git clone https://github.com/your-username/salesforce-mcp.git
 cd salesforce-mcp
