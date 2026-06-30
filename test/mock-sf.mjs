@@ -14,6 +14,7 @@ const SAMPLE_APEX = [
   "    public PaymentProcessor() {}",
   "    @AuraEnabled",
   "    public static Decimal charge(Id accountId, Decimal amount) {",
+  "        if (amount == null) { throw new IllegalArgumentException('amount required'); }",
   "        Account a = [SELECT Id, Name FROM Account WHERE Id = :accountId];",
   "        HttpRequest req = new HttpRequest();",
   "        Http h = new Http();",
@@ -23,6 +24,21 @@ const SAMPLE_APEX = [
   "        return amount;",
   "    }",
   "    private void log(String msg) { System.debug(msg); }",
+  "}",
+].join("\n")
+
+// A class that does everything the safe way — used to prove the security
+// analyzer does NOT raise false positives.
+const SAFE_APEX = [
+  "public with sharing class SafeService {",
+  "    @AuraEnabled(cacheable=true)",
+  "    public static List<Account> top(Integer n) {",
+  "        return [SELECT Id, Name FROM Account WITH USER_MODE LIMIT :n];",
+  "    }",
+  "    public static void touch(Set<Id> ids) {",
+  "        List<Account> rows = [SELECT Id FROM Account WHERE Id IN :ids WITH USER_MODE];",
+  "        update as user rows;",
+  "    }",
   "}",
 ].join("\n")
 
@@ -114,6 +130,7 @@ if (s[0] === "data" && s[1] === "query") {
 
   // ApexClass body queries (get_apex_class / analyze)
   if (/FROM ApexClass\b/i.test(q) && /Body/i.test(q)) {
+    const isSafe = /Name\s*=\s*'SafeService'/i.test(q)
     out({
       status: 0,
       result: {
@@ -121,9 +138,9 @@ if (s[0] === "data" && s[1] === "query") {
           {
             attributes: { type: "ApexClass", url: "/x" },
             Id: "01p000000000001",
-            Name: "PaymentProcessor",
+            Name: isSafe ? "SafeService" : "PaymentProcessor",
             ApiVersion: 59.0,
-            Body: SAMPLE_APEX,
+            Body: isSafe ? SAFE_APEX : SAMPLE_APEX,
           },
         ],
         totalSize: 1,

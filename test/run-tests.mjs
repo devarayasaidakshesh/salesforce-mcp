@@ -135,6 +135,40 @@ await test("analyze_apex_class detects DML, SOQL, callouts, controller, sharing"
   assert(r.guidance.some((g) => /callout/i.test(g)), "callout guidance missing")
 })
 
+await test("analyze_apex_class flags CRUD/FLS security gaps (read + DML)", async () => {
+  const r = await handleTestgen("analyze_apex_class", { class_name: "PaymentProcessor" })
+  const ids = (r.analysis.securityFindings || []).map((f) => f.id)
+  assert(ids.includes("FLS_READ"), "missing FLS read finding: " + ids.join(","))
+  assert(ids.includes("FLS_DML"), "missing FLS DML finding: " + ids.join(","))
+  // exposed controller -> high severity
+  assert(r.analysis.securityFindings.every((f) => f.severity === "high"), "controller findings should be high")
+  assert(r.guidance.some((g) => /^SECURITY:/.test(g)), "security guidance not surfaced")
+})
+
+await test("scaffold follows the rules (real asserts, negative + bulk + runAs, no SeeAllData)", async () => {
+  const r = await handleTestgen("analyze_apex_class", { class_name: "PaymentProcessor" })
+  // Strip comment lines so we only check generated CODE, not the rule banner.
+  const code = r.testScaffold.split("\n").filter((ln) => !ln.trim().startsWith("//")).join("\n")
+  const s = r.testScaffold
+  assert(!/System\.assert\s*\(\s*true/.test(code), "scaffold still emits a tautological System.assert(true)")
+  assert(s.includes("Assert."), "scaffold has no real Assert.* call")
+  assert(s.includes("test_charge_rejectsInvalidInput"), "no negative/exception test generated")
+  assert(s.includes("test_bulk_200") && s.includes("for (Integer i = 0; i < 200"), "no real 200-record bulk test")
+  assert(s.includes("System.runAs(") && s.includes("newMinAccessUser"), "no runAs FLS test generated")
+  assert(/SeeAllData/i.test(s), "scaffold does not address SeeAllData")
+  // positive path uses a VALID Decimal (1.0); negative path uses 0 to trip the guard
+  const positive = s.slice(s.indexOf("test_charge_positive"), s.indexOf("test_charge_rejectsInvalidInput"))
+  assert(/charge\([^)]*,\s*1\.0\)/.test(positive), "positive test should pass a valid Decimal, got: " + positive)
+  const negative = s.slice(s.indexOf("test_charge_rejectsInvalidInput"))
+  assert(/charge\([^)]*,\s*0\)/.test(negative), "negative test should pass an invalid Decimal (0)")
+})
+
+await test("security analyzer does not false-positive on a safe class", async () => {
+  const r = await handleTestgen("analyze_apex_class", { class_name: "SafeService" })
+  assert(r.analysis.securityFindings.length === 0, "safe class wrongly flagged: " + JSON.stringify(r.analysis.securityFindings))
+  assert(!r.guidance.some((g) => /^SECURITY:/.test(g)), "safe class should have no security guidance")
+})
+
 await test("check_coverage computes percentage", async () => {
   const r = await handleTestgen("check_coverage", { class_name: "*" })
   const pp = r.coverage.find((c) => c.className === "PaymentProcessor")

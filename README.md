@@ -59,7 +59,7 @@ The Salesforce MCP server is a bridge between an AI assistant (Claude, Copilot, 
 - Explore and describe any object's schema
 - Read, list, and execute Apex code
 - Check org health and API limits
-- Analyze Apex classes and generate test scaffolds
+- Analyze Apex classes for security issues and generate rule-following test scaffolds
 - Build `package.xml` deployment manifests
 
 It speaks the **Model Context Protocol (MCP)**, an open standard from Anthropic, so it works with any client that supports MCP — not just Claude.
@@ -309,14 +309,15 @@ Get the name, email, profile, and role of the currently connected Salesforce use
 
 #### `analyze_apex_class`
 
-Deep-analyze an Apex class: extracts methods, signatures, DML operations, SOQL objects, HTTP callouts, async patterns, and sharing model. Returns a test scaffold with one test stub per method.
+Deep-analyze an Apex class: extracts methods, signatures, DML operations, SOQL objects, HTTP callouts, async patterns, and sharing model. Runs a **security scan** (CRUD/FLS enforcement, SOQL injection, sharing declaration, hardcoded secrets) and returns a **rule-following test scaffold** — valid-input positive tests, exception-path negative tests (only for methods that actually validate), a 200-record bulk test, and a `System.runAs()` permission test. Every generated test makes a real `Assert.*` call (never `System.assert(true)`) and no test uses `SeeAllData`.
 
 **Use cases:**
 
-1. **Generate a test class starting point** — analyze `InvoiceService` to get a scaffold with stubs for every public method, including `@TestSetup` data setup with the correct object names.
-2. **Understand a complex class before modifying it** — see at a glance what DML it does, what objects it queries, whether it makes callouts, and whether it runs `with sharing`.
-3. **Identify test gaps** — the analysis shows which methods are `@AuraEnabled` or `@InvocableMethod` — the highest-priority entry points for test coverage.
-4. **Plan a refactor** — see all methods, their access modifiers, and parameters in a structured format without reading every line of code.
+1. **Generate a test class starting point** — analyze `InvoiceService` to get a scaffold with positive/negative/bulk/runAs tests for every public method, including `@TestSetup` data setup with the correct object names.
+2. **Catch security gaps before review** — surfaces CRUD/FLS violations (SOQL/DML running in system mode), unescaped dynamic SOQL, missing sharing declarations, and hardcoded secrets, each with a concrete fix — the same findings a Salesforce Security Review flags.
+3. **Understand a complex class before modifying it** — see at a glance what DML it does, what objects it queries, whether it makes callouts, and whether it runs `with sharing`.
+4. **Identify test gaps** — the analysis shows which methods are `@AuraEnabled` or `@InvocableMethod` — the highest-priority entry points for test coverage.
+5. **Plan a refactor** — see all methods, their access modifiers, and parameters in a structured format without reading every line of code.
 
 ---
 
@@ -387,10 +388,11 @@ List the exact API names (fullNames) of a metadata type in the org — the preci
 
 ## Tests
 
-No live org required — a mock `sf` CLI drives all scenarios.
+No live org required — a mock `sf` CLI drives all scenarios, including the Apex
+security analyzer (CRUD/FLS, sharing) and the generated test scaffold's rules.
 
 ```bash
-npm test          # 33 scenario tests
+npm test          # 65 scenario tests
 npm run test:boot # boots the real server and lists all tools
 ```
 
